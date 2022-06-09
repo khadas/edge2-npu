@@ -23,7 +23,7 @@
 
 #include <set>
 #include <vector>
-#define LABEL_NALE_TXT_PATH "./model/coco_80_labels_list.txt"
+#define LABEL_NALE_TXT_PATH "./data/coco_80_labels_list.txt"
 
 static char* labels[OBJ_CLASS_NUM];
 

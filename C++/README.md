@@ -1,5 +1,11 @@
 ## RKNPU For Edge2 / C++ Demo
 
+### Install dependences
+
+```sh
+$ sudo apt install cmake
+```
+
 ### Docs
 
 For how to use the API interface, please refer to the documentation under the doc folder.

@@ -1,5 +1,13 @@
 # Python NPU demo for Edge2
 
+### INstall dependences
+
+```sh
+$ sudo apt-get install -y python3-dev python3-pip
+$ sudo apt-get install -y python3-opencv python3-numpy
+$ pip3 install ./wheel/rknn_toolkit_lite2-1.3.0-cp310-cp310-linux_aarch64.whl
+```
+
 ### Run
 
 use resnet18 as example:

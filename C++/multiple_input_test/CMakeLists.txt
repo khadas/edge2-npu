@@ -25,11 +25,6 @@ include_directories(${RKNN_API_PATH}/include)
 include_directories(${CMAKE_SOURCE_DIR}/../3rdparty)
 
 # opencv
-if(LIB_ARCH STREQUAL "armhf")
-  set(OpenCV_DIR ${CMAKE_SOURCE_DIR}/../3rdparty/opencv/opencv-linux-armhf/share/OpenCV)
-else()
-  set(OpenCV_DIR ${CMAKE_SOURCE_DIR}/../3rdparty/opencv/opencv-linux-aarch64/share/OpenCV)
-endif()
 find_package(OpenCV REQUIRED)
 
 #rga

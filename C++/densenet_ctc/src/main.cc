@@ -155,7 +155,6 @@ int main(int argc, char** argv)
   	printf("img width = %d, img height = %d\n", orig_img_width, orig_img_height);
   	
   	cv::resize(orig_img, img, cv::Size(280, 32), (0, 0), (0, 0), cv::INTER_LINEAR);
-  	cv::imwrite("./tmp.jpg", img);
 
   	/* Create the neural network */
   	printf("Loading mode...\n");

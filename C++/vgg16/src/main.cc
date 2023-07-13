@@ -144,7 +144,7 @@ int main(int argc, char** argv)
   	char* image_name = argv[2];
 
   	printf("Read %s ...\n", image_name);
-  	cv::Mat orig_img = cv::imread(image_name, 0);
+  	cv::Mat orig_img = cv::imread(image_name);
   	if (!orig_img.data) {
 		printf("cv::imread %s fail!\n", image_name);
 		return -1;
@@ -154,7 +154,7 @@ int main(int argc, char** argv)
   	int orig_img_height = orig_img.rows;
   	printf("img width = %d, img height = %d\n", orig_img_width, orig_img_height);
   	
-  	cv::resize(orig_img, img, cv::Size(280, 32), (0, 0), (0, 0), cv::INTER_LINEAR);
+  	cv::resize(orig_img, img, cv::Size(32, 32), (0, 0), (0, 0), cv::INTER_LINEAR);
 
   	/* Create the neural network */
   	printf("Loading mode...\n");
@@ -241,6 +241,7 @@ int main(int argc, char** argv)
 
   	rknn_output outputs[io_num.n_output];
   	memset(outputs, 0, sizeof(outputs));
+  	
   	for (int i = 0; i < io_num.n_output; i++) {
 		outputs[i].want_float = 1;
   	}
@@ -251,13 +252,10 @@ int main(int argc, char** argv)
   	printf("once run use %f ms\n", (__get_us(stop_time) - __get_us(start_time)) / 1000);
 
   	// post process
-  	char result[35] = {0};
-  	int len = 0;
-  	post_process((float*)outputs[0].buf, box_conf_threshold, result, &len);
+  	char result[12];
+  	post_process((float*)outputs[0].buf, box_conf_threshold, result);
   	
-  	printf("%d\n", len);
-  	printf("%s", result);
-  	printf("\n");
+  	printf("\n%s\n\n", result);
 
   	ret = rknn_outputs_release(ctx, io_num.n_output, outputs);
 
@@ -269,7 +267,7 @@ int main(int argc, char** argv)
 		ret = rknn_run(ctx, NULL);
 		ret = rknn_outputs_get(ctx, io_num.n_output, outputs, NULL);
 #if 0
-		post_process((float*)outputs[0].buf, box_conf_threshold, &result);
+		post_process((float*)outputs[0].buf, box_conf_threshold, result);
 #endif
 		ret = rknn_outputs_release(ctx, io_num.n_output, outputs);
   	}

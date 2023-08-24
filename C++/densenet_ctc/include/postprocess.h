@@ -6,7 +6,7 @@
 
 #define OBJ_NAME_MAX_SIZE 16
 #define OBJ_NUMB_MAX_SIZE 64
-#define OBJ_CLASS_NUM     89
+#define OBJ_CLASS_NUM     87
 #define BOX_THRESH        0.25
 
 typedef struct _BOX_RECT

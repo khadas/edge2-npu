@@ -223,7 +223,7 @@ static int process(int8_t* input, int grid_h, int grid_w, int height, int width,
         }
       }
       if (maxClassId >= 0) {
-        int     offset = (i * grid_h + j) * (OBJ_CLASS_NUM + 4 * 16) + 80;
+        int     offset = (i * grid_h + j) * (OBJ_CLASS_NUM + 4 * 16) + OBJ_CLASS_NUM;
         float   box_x1 = (j + 0.5 - decode_box(&input[offset], 16, zp, scale)) * (float)stride;
         float   box_y1 = (i + 0.5 - decode_box(&input[offset + 16], 16, zp, scale)) * (float)stride;
         float   box_x2 = (j + 0.5 + decode_box(&input[offset + 16 * 2], 16, zp, scale)) * (float)stride;

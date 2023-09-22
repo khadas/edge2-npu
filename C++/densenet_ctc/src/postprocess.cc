@@ -104,16 +104,16 @@ int post_process(float* input0, float conf_threshold, char* result, int* len)
     init = 0;
   }
   
-  int class_num = 88;
+  int class_num = OBJ_CLASS_NUM + 1;
   int box = 35;
   
-  int last_index = class_num - 1;
+  int last_index = class_num;
   int last_count = 0;
   for (int i = 0; i < box; ++i)
   {
   	float max_conf = 0;
-  	int index = class_num - 1;
-  	for (int j = 0; j < class_num - 1; ++j)
+  	int index = class_num;
+  	for (int j = 0; j < class_num; ++j)
   	{
   		float conf = input0[i * class_num + j];
   		if (conf > conf_threshold && conf > max_conf)

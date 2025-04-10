@@ -154,23 +154,6 @@ int main(int argc, char** argv)
   	int orig_img_width  = orig_img.cols;
   	int orig_img_height = orig_img.rows;
   	printf("img width = %d, img height = %d\n", orig_img_width, orig_img_height);
-  	
-  	if (orig_img_width >= orig_img_height)
-  	{
-  		img_width = (ceil(orig_img_width / 16) + 1) * 16;
-  		img_height = img_width;
-  		int x_padding = img_width - orig_img_width;
-  		int y_padding = img_height - orig_img_height;
-  		cv::copyMakeBorder(orig_img, img, 0, y_padding, 0, x_padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-  	}
-  	else if (orig_img_width < orig_img_height)
-  	{
-  		img_height = (ceil(orig_img_height / 16) + 1) * 16;
-  		img_width = img_height;
-  		int x_padding = img_width - orig_img_width;
-  		int y_padding = img_height - orig_img_height;
-  		cv::copyMakeBorder(orig_img, img, 0, y_padding, 0, x_padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-  	}
 
   	/* Create the neural network */
   	printf("Loading mode...\n");
@@ -242,31 +225,30 @@ int main(int argc, char** argv)
   	inputs[0].size         = width * height * channel;
   	inputs[0].fmt          = RKNN_TENSOR_NHWC;
   	inputs[0].pass_through = 0;
-
-  	// You may not need resize when src resulotion equals to dst resulotion
-  	void* resize_buf = nullptr;
-
-  	if (img_width != width || img_height != height) {
-		printf("resize with RGA!\n");
-		resize_buf = malloc(height * width * channel);
-		memset(resize_buf, 0x00, height * width * channel);
-
-		src = wrapbuffer_virtualaddr((void*)img.data, img_width, img_height, RK_FORMAT_RGB_888);
-		dst = wrapbuffer_virtualaddr((void*)resize_buf, width, height, RK_FORMAT_RGB_888);
-		ret = imcheck(src, dst, src_rect, dst_rect);
-		if (IM_STATUS_NOERROR != ret) {
-	  		printf("%d, check error! %s", __LINE__, imStrError((IM_STATUS)ret));
-	  		return -1;
-		}
-		IM_STATUS STATUS = imresize(src, dst);
-
-		// for debug
-		cv::Mat resize_img(cv::Size(width, height), CV_8UC3, resize_buf);
-
-		inputs[0].buf = resize_buf;
-  	} else {
-		inputs[0].buf = (void*)img.data;
+  	
+  	int resize_width, resize_height;
+  	if (orig_img_width >= orig_img_height)
+  	{
+  		img_width = orig_img_width;
+  		img_height = img_width;
+  		resize_width = width;
+  		resize_height = (int)(resize_width * orig_img_height / orig_img_width);
+  		cv::resize(orig_img, img, cv::Size(resize_width, resize_height), (0, 0), (0, 0), cv::INTER_LINEAR);
+  		int padding = height - resize_height;
+  		cv::copyMakeBorder(img, img, 0, padding, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
   	}
+  	else
+  	{
+  		img_height = orig_img_height;
+  		img_width = img_height;
+  		resize_height = height;
+  		resize_width = (int)(resize_height * orig_img_width / orig_img_height);
+  		cv::resize(orig_img, img, cv::Size(resize_width, resize_height), (0, 0), (0, 0), cv::INTER_LINEAR);
+  		int padding = width - resize_width;
+  		cv::copyMakeBorder(img, img, 0, 0, 0, padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+  	}
+
+  	inputs[0].buf = (void*)img.data;
 
   	gettimeofday(&start_time, NULL);
   	rknn_inputs_set(ctx, io_num.n_input, inputs);
@@ -338,10 +320,6 @@ int main(int argc, char** argv)
 
   	if (model_data) {
 		free(model_data);
-  	}
-
-  	if (resize_buf) {
-		free(resize_buf);
   	}
 
   	return 0;

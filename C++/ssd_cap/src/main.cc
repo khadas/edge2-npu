@@ -20,18 +20,28 @@
 #include "opencv2/imgproc.hpp"
 #include "rknn_api.h"
 #include "ssd.h"
+#include "camera_util.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
 #include <opencv2/opencv.hpp>
+#include <iostream>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <linux/videodev2.h>
 
 #include <fstream>
 #include <iostream>
 
 using namespace std;
 using namespace cv;
+
+#define WIDTH  1920
+#define HEIGHT 1080
 
 /*-------------------------------------------
                   Functions
@@ -89,12 +99,13 @@ int main(int argc, char** argv)
   rknn_context   ctx;
 
   const char* model_path = argv[1];
-  std::string device_number = argv[2];
+  std::string camera_type = argv[2];
+  std::string device_number = argv[3];
   
   cv::namedWindow("Image Window");
 
-  if (argc != 3) {
-    printf("Usage:%s model image\n", argv[0]);
+  if (argc != 4) {
+    printf("Usage: %s <rknn model> <usb or mipi> <device number> \n", argv[0]);
     return -1;
   }
 
@@ -161,30 +172,27 @@ int main(int argc, char** argv)
   
   cv::Mat orig_img;
   cv::Mat img;
-  cv::VideoCapture cap(std::stoi(device_number));
-  cap.set(cv::CAP_PROP_FRAME_WIDTH, 1920);
-  cap.set(cv::CAP_PROP_FRAME_HEIGHT, 1080);
   detect_result_group_t detect_result_group;
-
-  if (!cap.isOpened()) {
-    printf("capture device failed to open!");
-    cap.release();
-    exit(-1);
+  
+  if (camera_type == "usb") {
+    ret = load_usb_camera(device_number, WIDTH, HEIGHT);
   }
-
-  if (!cap.read(orig_img)) {
-    printf("Capture read error");
+  else if (camera_type == "mipi") {
+    ret = load_mipi_camera(device_number, WIDTH, HEIGHT);
   }
-  cv::cvtColor(orig_img, img, cv::COLOR_BGR2RGB);
-  printf("img width = %d, img height = %d\n", img.cols, img.rows);
+  else {
+    std::cout << "Unsupport camera type : " << camera_type << " !!!" << std::endl;
+  }
 
   while(1){
-    if (!cap.read(orig_img)) {
-      printf("Capture read error");
-      break;
-    }
-    
     // if origin model is from Caffe, you maybe not need do BGR2RGB.
+    
+    if (camera_type == "usb") {
+	  read_usb_frame(&orig_img);
+	}
+	else if (camera_type == "mipi") {
+	  read_mipi_frame(&orig_img);
+	}
     cv::cvtColor(orig_img, img, cv::COLOR_BGR2RGB);
 
     if (orig_img.cols != img_width || orig_img.rows != img_height) {
@@ -236,6 +244,12 @@ int main(int argc, char** argv)
     
     cv::imshow("Image Window",orig_img);
     cv::waitKey(1);
+  }
+  if (camera_type == "usb") {
+    close_usb_camera();
+  }
+  else if (camera_type == "mipi") {
+    close_mipi_camera();
   }
 
   deinitPostProcessSSD();

@@ -251,15 +251,17 @@ int main(int argc, char** argv)
   		
   		if (orig_img.cols >= orig_img.rows)
   		{
-  			int y_padding = orig_img.cols - orig_img.rows;
+  			int new_height = (int)(orig_img.rows * 160 / orig_img.cols);
+  			cv::resize(img, img, cv::Size(160, new_height));
+  			int y_padding = 160 - new_height;
   			cv::copyMakeBorder(img, img, 0, y_padding, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-  			cv::resize(img, img, cv::Size(160, 160));
   		}
   		else
   		{
-  			int x_padding = orig_img.rows - orig_img.cols;
+  			int new_width = (int)(orig_img.cols * 160 / orig_img.rows);
+  			cv::resize(img, img, cv::Size(new_width, 160));
+  			int x_padding = 160 - new_width;
   			cv::copyMakeBorder(img, img, 0, 0, 0, x_padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-  			cv::resize(img, img, cv::Size(160, 160));
   		}
   		
   		inputs[0].buf = (void*)img.data;
@@ -318,17 +320,19 @@ int main(int argc, char** argv)
   				cv::cvtColor(orig_img, img, cv::COLOR_BGR2RGB);
   				
   				if (orig_img.cols >= orig_img.rows)
-  				{
-  					int y_padding = orig_img.cols - orig_img.rows;
-  					cv::copyMakeBorder(img, img, 0, y_padding, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-  					cv::resize(img, img, cv::Size(160, 160));
-  				}
-  				else
-  				{
-  					int x_padding = orig_img.rows - orig_img.cols;
-  					cv::copyMakeBorder(img, img, 0, 0, 0, x_padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-  					cv::resize(img, img, cv::Size(160, 160));
-  				}
+		  		{
+		  			int new_height = (int)(orig_img.rows * 160 / orig_img.cols);
+		  			cv::resize(img, img, cv::Size(160, new_height));
+		  			int y_padding = 160 - new_height;
+		  			cv::copyMakeBorder(img, img, 0, y_padding, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+		  		}
+		  		else
+		  		{
+		  			int new_width = (int)(orig_img.cols * 160 / orig_img.rows);
+		  			cv::resize(img, img, cv::Size(new_width, 160));
+		  			int x_padding = 160 - new_width;
+		  			cv::copyMakeBorder(img, img, 0, 0, 0, x_padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+		  		}
   				
   				inputs[0].buf = (void*)img.data;
   				rknn_inputs_set(ctx, io_num.n_input, inputs);

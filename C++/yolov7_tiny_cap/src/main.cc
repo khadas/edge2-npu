@@ -20,6 +20,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <iostream>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <linux/videodev2.h>
+
 
 #define _BASETSD_H
 
@@ -34,10 +41,13 @@
 #include "RgaUtils.h"
 #include "im2d.h"
 #include "postprocess.h"
+#include "camera_util.h"
 #include "rga.h"
 #include "rknn_api.h"
 
 #define PERF_WITH_POST 1
+#define WIDTH  1920
+#define HEIGHT 1080
 /*-------------------------------------------
                   Functions
 -------------------------------------------*/
@@ -139,17 +149,16 @@ int main(int argc, char** argv)
   	memset(&src, 0, sizeof(src));
   	memset(&dst, 0, sizeof(dst));
 
-  	if (argc != 3) {
-		printf("Usage: %s <rknn model> <device number> \n", argv[0]);
+  	if (argc != 4) {
+		printf("Usage: %s <rknn model> <usb or mipi> <device number> \n", argv[0]);
 		return -1;
   	}
 
   	printf("post process config: box_conf_threshold = %.2f, nms_threshold = %.2f\n", box_conf_threshold, nms_threshold);
 
   	model_name       = (char*)argv[1];
-
-	std::string device_number = argv[2];
-
+	std::string camera_type = argv[2];
+	std::string device_number = argv[3];
 	cv::namedWindow("Image Window");
 
   	/* Create the neural network */
@@ -223,10 +232,6 @@ int main(int argc, char** argv)
   	inputs[0].fmt          = RKNN_TENSOR_NHWC;
   	inputs[0].pass_through = 0;
 
-  	// You may not need resize when src resulotion equals to dst resulotion
-  	void* resize_buf = nullptr;
-	resize_buf = malloc(height * width * channel);
-
 	rknn_output outputs[io_num.n_output];
 	memset(outputs, 0, sizeof(outputs));
 	for (int i = 0; i < io_num.n_output; i++) {
@@ -235,27 +240,34 @@ int main(int argc, char** argv)
 
 	cv::Mat orig_img;
 	cv::Mat img;
-	cv::VideoCapture cap(std::stoi(device_number));
-	cap.set(cv::CAP_PROP_FRAME_WIDTH, 1920);
-	cap.set(cv::CAP_PROP_FRAME_HEIGHT, 1080);
 
-	if (!cap.isOpened()) {
-		printf("capture device failed to open!");
-		cap.release();
-		exit(-1);
+	if (camera_type == "usb") {
+		ret = load_usb_camera(device_number, WIDTH, HEIGHT);
 	}
-
-	if (!cap.read(orig_img)) {
-		printf("Capture read error");
+	else if (camera_type == "mipi") {
+		ret = load_mipi_camera(device_number, WIDTH, HEIGHT);
 	}
-  	cv::copyMakeBorder(orig_img, img, 0, 840, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-  	img_width  = orig_img.cols;
-  	img_height = orig_img.rows;
-  	printf("img width = %d, img height = %d\n", img_width, img_height);
-
+	else {
+		std::cout << "Unsupport camera type : " << camera_type << " !!!" << std::endl;
+	}
+	
 	// post process
-  	float scale_w = (float)width / img_width;
-  	float scale_h = scale_w;
+  	float scale_w, scale_h;
+	int resize_w, resize_h, padding;
+	if (WIDTH > HEIGHT) {
+		scale_w = (float)width / WIDTH;
+		scale_h = scale_w;
+		resize_w = width;
+		resize_h = (int)(resize_w * HEIGHT / WIDTH);
+		padding = resize_w - resize_h;
+	}
+	else {
+		scale_h = (float)height / HEIGHT;
+		scale_w = scale_h;
+		resize_h = height;
+		resize_w = (int)(resize_h * WIDTH / HEIGHT);
+		padding = resize_h - resize_w;
+	}
 
   	detect_result_group_t detect_result_group;
   	std::vector<float>    out_scales;
@@ -263,25 +275,29 @@ int main(int argc, char** argv)
   	char text[256];
 
 	int x1,y1,x2,y2,i;
-
-	src = wrapbuffer_virtualaddr((void*)img.data, img_width, img_width, RK_FORMAT_RGB_888);
-	dst = wrapbuffer_virtualaddr((void*)resize_buf, width, height, RK_FORMAT_RGB_888);
+	
+	float total_time = 0;
+	int n = 0;
 
 	while(1){
-
-		if (!cap.read(orig_img)) {
-			printf("Capture read error");
-			break;
-		}
-		// cv::cvtColor(orig_img, img, cv::COLOR_BGR2RGB);
-		cv::copyMakeBorder(orig_img, img, 0, 840, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-
-		memset(resize_buf, 0x00, height * width * channel);
-
-		imresize(src, dst);
-		inputs[0].buf = resize_buf;
-
 		gettimeofday(&start_time, NULL);
+		if (camera_type == "usb") {
+			read_usb_frame(&orig_img);
+		}
+		else if (camera_type == "mipi") {
+			read_mipi_frame(&orig_img);
+		}
+
+		cv::resize(orig_img, img, cv::Size(resize_w, resize_h), 0, 0, cv::INTER_LINEAR);
+		if (WIDTH > HEIGHT) {
+			cv::copyMakeBorder(img, img, 0, padding, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+		}
+		else{
+			cv::copyMakeBorder(img, img, 0, 0, 0, padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+		}
+		
+		inputs[0].buf = (void*)img.data;
+		
 		rknn_inputs_set(ctx, io_num.n_input, inputs);
 
 		for (i = 0; i < io_num.n_output; i++) {
@@ -290,8 +306,6 @@ int main(int argc, char** argv)
 
 		ret = rknn_run(ctx, NULL);
 		ret = rknn_outputs_get(ctx, io_num.n_output, outputs, NULL);
-		gettimeofday(&stop_time, NULL);
-		printf("once run use %f ms\n", (__get_us(stop_time) - __get_us(start_time)) / 1000);
 
 		for (i = 0; i < io_num.n_output; ++i) {
 			out_scales.push_back(output_attrs[i].scale);
@@ -303,8 +317,8 @@ int main(int argc, char** argv)
 		for (i = 0; i < detect_result_group.count; i++) {
 			detect_result_t* det_result = &(detect_result_group.results[i]);
 			sprintf(text, "%s %.1f%%", det_result->name, det_result->prop * 100);
-			printf("%s @ (%d %d %d %d) %f\n", det_result->name, det_result->box.left, det_result->box.top,
-					det_result->box.right, det_result->box.bottom, det_result->prop);
+			//printf("%s @ (%d %d %d %d) %f\n", det_result->name, det_result->box.left, det_result->box.top,
+			//		det_result->box.right, det_result->box.bottom, det_result->prop);
 			x1 = det_result->box.left;
 			y1 = det_result->box.top;
 			x2 = det_result->box.right;
@@ -317,6 +331,22 @@ int main(int argc, char** argv)
 		cv::waitKey(1);
 
 		ret = rknn_outputs_release(ctx, io_num.n_output, outputs);
+		gettimeofday(&stop_time, NULL);
+		//printf("total run use %f ms\n", (__get_us(stop_time) - __get_us(start_time)) / 1000);
+		total_time += (__get_us(stop_time) - __get_us(start_time)) / 1000;
+		n++;
+		if (n == 10)
+		{
+			printf("average time : %f ms\n", (total_time / 10));
+			total_time = 0;
+			n = 0;
+		}
+	}
+	if (camera_type == "usb") {
+		close_usb_camera();
+	}
+	else if (camera_type == "mipi") {
+		close_mipi_camera();
 	}
 
 	ret = rknn_outputs_release(ctx, io_num.n_output, outputs);
@@ -327,10 +357,6 @@ int main(int argc, char** argv)
 
   	if (model_data) {
 		free(model_data);
-  	}
-
-  	if (resize_buf) {
-		free(resize_buf);
   	}
 
   	return 0;

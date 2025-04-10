@@ -141,25 +141,30 @@ int main(int argc, char** argv)
   		cv::Mat img;
   		int orig_img_width  = orig_img.cols;
   		int orig_img_height = orig_img.rows;
-  		int img_width;
-  		int img_height;
-  		
-  		if (orig_img_width >= orig_img_height)
+  		int img_width, resize_img_width;
+		int img_height, resize_img_height;
+		int padding;
+
+		if (orig_img_width >= orig_img_height)
   		{
   			img_width = orig_img_width;
-  			img_height = orig_img_width;
+			img_height = orig_img_width;
+  			resize_img_width = retinaface_width;
+  			resize_img_height = (int)(retinaface_width * orig_img_height / orig_img_width);
+  			padding = retinaface_height - resize_img_height;
+  			cv::resize(orig_img, img, cv::Size(resize_img_width, resize_img_height), (0, 0), (0, 0), cv::INTER_LINEAR);
+  			cv::copyMakeBorder(img, img, 0, padding, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
   		}
   		else if (orig_img_width < orig_img_height)
   		{
   			img_height = orig_img_height;
-  			img_width = orig_img_height;
-  		}
-  		
-  		int x_padding = img_width - orig_img_width;
-  		int y_padding = img_height - orig_img_height;
-  		cv::copyMakeBorder(orig_img, img, 0, y_padding, 0, x_padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-		
-  		cv::resize(img, img, cv::Size(retinaface_width, retinaface_height), (0, 0), (0, 0), cv::INTER_LINEAR);
+			img_width = orig_img_height;
+  			resize_img_height = retinaface_height;
+  			resize_img_width = (int)(retinaface_height * orig_img_width / orig_img_height);
+  			padding = retinaface_width - resize_img_width;
+  			cv::resize(orig_img, img, cv::Size(resize_img_width, resize_img_height), (0, 0), (0, 0), cv::INTER_LINEAR);
+  			cv::copyMakeBorder(img, img, 0, 0, 0, padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+  		}	
   		cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
   		
   		detect_result_group_t retinaface_detect_result_group;
@@ -248,26 +253,31 @@ int main(int argc, char** argv)
   				cv::Mat img;
   				int orig_img_width  = orig_img.cols;
   				int orig_img_height = orig_img.rows;
-  				int img_width;
-  				int img_height;
+  				int img_width, resize_img_width;
+  				int img_height, resize_img_height;
+  				int padding;
   	
   				if (orig_img_width >= orig_img_height)
-  				{
-  					img_width = orig_img_width;
+		  		{
+		  			img_width = orig_img_width;
   					img_height = orig_img_width;
-  				}
-  				else if (orig_img_width < orig_img_height)
-  				{
-  					img_height = orig_img_height;
+		  			resize_img_width = retinaface_width;
+		  			resize_img_height = (int)(retinaface_width * orig_img_height / orig_img_width);
+		  			padding = retinaface_height - resize_img_height;
+		  			cv::resize(orig_img, img, cv::Size(resize_img_width, resize_img_height), (0, 0), (0, 0), cv::INTER_LINEAR);
+		  			cv::copyMakeBorder(img, img, 0, padding, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+		  		}
+		  		else if (orig_img_width < orig_img_height)
+		  		{
+		  			img_height = orig_img_height;
   					img_width = orig_img_height;
-  				}
-  	
-  				int x_padding = img_width - orig_img_width;
-  				int y_padding = img_height - orig_img_height;
-  				cv::copyMakeBorder(orig_img, img, 0, y_padding, 0, x_padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-				
-  				cv::resize(img, img, cv::Size(retinaface_width, retinaface_height), (0, 0), (0, 0), cv::INTER_LINEAR);
-  				cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
+		  			resize_img_height = retinaface_height;
+		  			resize_img_width = (int)(retinaface_height * orig_img_width / orig_img_height);
+		  			padding = retinaface_width - resize_img_width;
+		  			cv::resize(orig_img, img, cv::Size(resize_img_width, resize_img_height), (0, 0), (0, 0), cv::INTER_LINEAR);
+		  			cv::copyMakeBorder(img, img, 0, 0, 0, padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+		  		}	
+		  		cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
 
   				detect_result_group_t retinaface_detect_result_group;
 

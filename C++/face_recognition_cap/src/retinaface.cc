@@ -48,8 +48,6 @@ static void dump_tensor_attr(rknn_tensor_attr* attr)
          get_qnt_type_string(attr->qnt_type), attr->zp, attr->scale);
 }
 
-double __get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
-
 static unsigned char* load_data(FILE* fp, size_t ofst, size_t sz)
 {
   	unsigned char* data;

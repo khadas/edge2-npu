@@ -23,6 +23,11 @@
 #include <dirent.h>
 #include <iostream>
 #include <fstream>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <linux/videodev2.h>
 
 #define _BASETSD_H
 
@@ -34,10 +39,15 @@
 #include "postprocess.h"
 #include "retinaface.h"
 #include "facenet.h"
+#include "camera_util.h"
 #include "rga.h"
 #include "rknn_api.h"
 
 #define PERF_WITH_POST 1
+#define WIDTH  1920
+#define HEIGHT 1080
+
+double __get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
 
 /*-------------------------------------------
                   Main Functions
@@ -77,8 +87,8 @@ int main(int argc, char** argv)
   	struct timeval start_time, stop_time;
   	int            ret;
 
-  	if (argc != 4) {
-		printf("Usage: %s <retinaface model> <facenet model> <jpg/1> \n", argv[0]);
+  	if (argc != 5) {
+		printf("Usage: %s <retinaface model> <facenet model> <usb or mipi> <device number> \n", argv[0]);
 		return -1;
   	}
 
@@ -86,7 +96,8 @@ int main(int argc, char** argv)
 
   	retinaface_model_name = (char*)argv[1];
   	facenet_model_name = (char*)argv[2];
-  	std::string device_number = argv[3];
+  	std::string camera_type = argv[3];
+  	std::string device_number = argv[4];
   	
   	create_retinaface(retinaface_model_name, &retinaface_ctx, retinaface_width, retinaface_height, retinaface_channel, retinaface_out_scales, retinaface_out_zps, retinaface_io_num, retinaface_model_data);
   	create_facenet(facenet_model_name, &facenet_ctx, facenet_width, facenet_height, facenet_channel, facenet_io_num, facenet_model_data);
@@ -129,53 +140,95 @@ int main(int argc, char** argv)
   	cv::namedWindow("Image Window");
   	cv::Mat orig_img;
 	cv::Mat img;
-	cv::VideoCapture cap(std::stoi(device_number));
-	cap.set(cv::CAP_PROP_FRAME_WIDTH, 1920);
-	cap.set(cv::CAP_PROP_FRAME_HEIGHT, 1080);
 	
-	if (!cap.isOpened()) {
-		printf("capture device failed to open!");
-		cap.release();
-		exit(-1);
+	if (camera_type == "usb") {
+		ret = load_usb_camera(device_number, WIDTH, HEIGHT);
 	}
-
-	if (!cap.read(orig_img)) {
-		printf("Capture read error");
+	else if (camera_type == "mipi") {
+		ret = load_mipi_camera(device_number, WIDTH, HEIGHT);
+	}
+	else {
+		std::cout << "Unsupport camera type : " << camera_type << " !!!" << std::endl;
 	}
   	
-  	cv::copyMakeBorder(orig_img, img, 0, 840, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-  	int img_width  = img.cols;
-  	int img_height = img.rows;
-  	cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
+  	float scale_w, scale_h;
+	int resize_w, resize_h, padding;
+	if (WIDTH > HEIGHT) {
+		scale_w = (float)retinaface_width / WIDTH;
+		scale_h = scale_w;
+		resize_w = retinaface_width;
+		resize_h = (int)(resize_w * HEIGHT / WIDTH);
+		padding = resize_w - resize_h;
+	}
+	else {
+		scale_h = (float)retinaface_height / HEIGHT;
+		scale_w = scale_h;
+		resize_h = retinaface_height;
+		resize_w = (int)(resize_h * WIDTH / HEIGHT);
+		padding = resize_h - resize_w;
+	}
 
   	std::vector<float>    out_scales;
   	std::vector<int32_t>  out_zps;
   	char text[256];
 
 	int x1,y1,x2,y2;
-  	
-  	while(1){
-
-		if (!cap.read(orig_img)) {
-			printf("Capture read error");
-			break;
+	
+	std::string face_lib = "./data/face_feature_lib/";
+	DIR *pDir;
+	struct dirent *ptr;
+	if (!(pDir = opendir(face_lib.c_str())))
+	{
+		printf("Feature library doesn't Exist!\n");
+		return -1;
+	}
+	
+	std::vector<float*> lib_feature;
+	std::vector<std::string> lib_face_name;
+	while ((ptr = readdir(pDir)) != 0)
+	{
+		if (strcmp(ptr->d_name, ".") != 0 && strcmp(ptr->d_name, "..") != 0)
+		{
+			std::ifstream infile(face_lib + ptr->d_name);
+			std::string tmp;
+			
+			float* tmp_lib_feature = new float[128];
+			
+			int i = 0;
+			while (getline(infile, tmp))
+			{
+				tmp_lib_feature[i] = atof(tmp.c_str());
+				i++;
+			}
+			infile.close();
+			
+			lib_face_name.push_back(((std::string)ptr->d_name).substr(0, ((std::string)ptr->d_name).find_last_of(".")));
+			lib_feature.push_back(tmp_lib_feature);
 		}
-		cv::copyMakeBorder(orig_img, img, 0, 840, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-		cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
-		cv::resize(img, img, cv::Size(retinaface_width, retinaface_height));
+	}
+	
+	float total_time = 0;
+	int n = 0;
+	
+  	while(1){
+		gettimeofday(&start_time, NULL);
+		if (camera_type == "usb") {
+			read_usb_frame(&orig_img);
+		}
+		else if (camera_type == "mipi") {
+			read_mipi_frame(&orig_img);
+		}
 		
-  		std::string face_lib = "./data/face_feature_lib/";
-  		DIR *pDir;
-  		struct dirent *ptr;
-  		if (!(pDir = opendir(face_lib.c_str())))
-  		{
-  			printf("Feature library doesn't Exist!\n");
-  			return -1;
-  		}
-  		
-  		detect_result_group_t retinaface_detect_result_group;
-  		
-  		retinaface_inference(&retinaface_ctx, img, retinaface_width, retinaface_height, retinaface_channel, box_conf_threshold, nms_threshold, img_width, img_height, retinaface_io_num, retinaface_inputs, retinaface_outputs, retinaface_out_scales, retinaface_out_zps, &retinaface_detect_result_group);
+		cv::resize(orig_img, img, cv::Size(resize_w, resize_h), 0, 0, cv::INTER_LINEAR);
+		detect_result_group_t retinaface_detect_result_group;
+		if (WIDTH > HEIGHT) {
+			cv::copyMakeBorder(img, img, 0, padding, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+			retinaface_inference(&retinaface_ctx, img, retinaface_width, retinaface_height, retinaface_channel, box_conf_threshold, nms_threshold, WIDTH, WIDTH, retinaface_io_num, retinaface_inputs, retinaface_outputs, retinaface_out_scales, retinaface_out_zps, &retinaface_detect_result_group);
+		}
+		else{
+			cv::copyMakeBorder(img, img, 0, 0, 0, padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+			retinaface_inference(&retinaface_ctx, img, retinaface_width, retinaface_height, retinaface_channel, box_conf_threshold, nms_threshold, HEIGHT, HEIGHT, retinaface_io_num, retinaface_inputs, retinaface_outputs, retinaface_out_scales, retinaface_out_zps, &retinaface_detect_result_group);
+		}
   		
   		for (int i = 0; i < retinaface_detect_result_group.count; i++) {
 			float landmark[5][2] = {{(float)retinaface_detect_result_group.results[i].point.point_1_x, (float)retinaface_detect_result_group.results[i].point.point_1_y},
@@ -196,30 +249,16 @@ int main(int argc, char** argv)
 			
 			float max_score = 0;
 			std::string name = "stranger";
-			while ((ptr = readdir(pDir)) != 0)
+			for (int i = 0; i < lib_feature.size(); i++)
   			{
-  				if (strcmp(ptr->d_name, ".") != 0 && strcmp(ptr->d_name, "..") != 0)
-  				{
-  					std::ifstream infile(face_lib + ptr->d_name);
-  					std::string tmp;
-  					float lib_feature[128];
-  					float cos_similar;
-  					
-  					int i = 0;
-  					while (getline(infile, tmp))
-  					{
-  						lib_feature[i] = atof(tmp.c_str());
-  						i++;
-  					}
-  					infile.close();
-  					
-  					cos_similar = cos_similarity(facenet_result, lib_feature);
-  					if (cos_similar >= facenet_threshold && cos_similar > max_score)
-  					{
-  						max_score = cos_similar;
-  						name = ((std::string)ptr->d_name).substr(0, ((std::string)ptr->d_name).find_last_of("."));
-  					}
-  				}
+				float cos_similar;
+				
+				cos_similar = cos_similarity(facenet_result, lib_feature[i]);
+				if (cos_similar >= facenet_threshold && cos_similar > max_score)
+				{
+					max_score = cos_similar;
+					name = lib_face_name[i];
+				}
   			}
   			facenet_output_release(&facenet_ctx, facenet_io_num, facenet_outputs);
   			
@@ -233,7 +272,24 @@ int main(int argc, char** argv)
   		}
   		cv::imshow("Image Window",orig_img);
 		cv::waitKey(1);
+		
+		gettimeofday(&stop_time, NULL);
+		//printf("total run use %f ms\n", (__get_us(stop_time) - __get_us(start_time)) / 1000);
+		total_time += (__get_us(stop_time) - __get_us(start_time)) / 1000;
+		n++;
+		if (n == 10)
+		{
+			printf("average time : %f ms\n", (total_time / 10));
+			total_time = 0;
+			n = 0;
+		}
   	}
+  	if (camera_type == "usb") {
+		close_usb_camera();
+	}
+	else if (camera_type == "mipi") {
+		close_mipi_camera();
+	}
 
 	release_retinaface(&retinaface_ctx, retinaface_model_data);
 	release_facenet(&facenet_ctx, facenet_model_data);

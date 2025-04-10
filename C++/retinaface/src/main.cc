@@ -155,24 +155,6 @@ int main(int argc, char** argv)
   	int orig_img_height = orig_img.rows;
   	printf("img width = %d, img height = %d\n", orig_img_width, orig_img_height);
   	
-  	if (orig_img_width >= orig_img_height)
-  	{
-  		img_width = orig_img_width;
-  		img_height = img_width;
-  	}
-  	else if (orig_img_width < orig_img_height)
-  	{
-  		img_height = orig_img_height;
-  		img_width = img_height;
-  	}
-  	
-  	int x_padding = img_width - orig_img_width;
-  	int y_padding = img_height - orig_img_height;
-  	cv::copyMakeBorder(orig_img, img, 0, y_padding, 0, x_padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-	
-  	cv::resize(img, img, cv::Size(640, 640), (0, 0), (0, 0), cv::INTER_LINEAR);
-  	cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
-  	
   	/* Create the neural network */
   	printf("Loading mode...\n");
   	int            model_data_size = 0;
@@ -226,30 +208,55 @@ int main(int argc, char** argv)
 		dump_tensor_attr(&(output_attrs[i]));
   	}
 
-  	int channel = 3;
-  	int width   = 0;
-  	int height  = 0;
+  	int retinaface_img_channel = 3;
+  	int retinaface_img_width   = 0;
+  	int retinaface_img_height  = 0;
   	if (input_attrs[0].fmt == RKNN_TENSOR_NCHW) {
 		printf("model is NCHW input fmt\n");
-		channel = input_attrs[0].dims[1];
-		width   = input_attrs[0].dims[2];
-		height  = input_attrs[0].dims[3];
+		retinaface_img_channel = input_attrs[0].dims[1];
+		retinaface_img_width   = input_attrs[0].dims[2];
+		retinaface_img_height  = input_attrs[0].dims[3];
   	} else {
 		printf("model is NHWC input fmt\n");
-		width   = input_attrs[0].dims[1];
-		height  = input_attrs[0].dims[2];
-		channel = input_attrs[0].dims[3];
+		retinaface_img_width   = input_attrs[0].dims[1];
+		retinaface_img_height  = input_attrs[0].dims[2];
+		retinaface_img_channel = input_attrs[0].dims[3];
   	}
 
-  	printf("model input height=%d, width=%d, channel=%d\n", height, width, channel);
+  	printf("model input height=%d, width=%d, channel=%d\n", retinaface_img_height, retinaface_img_width, retinaface_img_channel);
 
   	rknn_input inputs[1];
   	memset(inputs, 0, sizeof(inputs));
   	inputs[0].index        = 0;
   	inputs[0].type         = RKNN_TENSOR_UINT8;
-  	inputs[0].size         = width * height * channel;
+  	inputs[0].size         = retinaface_img_width * retinaface_img_height * retinaface_img_channel;
   	inputs[0].fmt          = RKNN_TENSOR_NHWC;
   	inputs[0].pass_through = 0;
+  	
+  	int resize_img_width, resize_img_height, padding;
+  	
+  	if (orig_img_width >= orig_img_height)
+  	{
+  		img_width = orig_img_width;
+  		img_height = img_width;
+  		resize_img_width = retinaface_img_width;
+  		resize_img_height = (int)(resize_img_width * orig_img_height / orig_img_width);
+  		cv::resize(orig_img, img, cv::Size(resize_img_width, resize_img_height), (0, 0), (0, 0), cv::INTER_LINEAR);
+  		padding = resize_img_width - resize_img_height;
+  		cv::copyMakeBorder(img, img, 0, padding, 0, 0, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+  	}
+  	else if (orig_img_width < orig_img_height)
+  	{
+  		img_height = orig_img_height;
+  		img_width = img_height;
+  		resize_img_height = retinaface_img_height;
+  		resize_img_width = (int)(resize_img_height * orig_img_width / orig_img_height);
+  		cv::resize(orig_img, img, cv::Size(resize_img_width, resize_img_height), (0, 0), (0, 0), cv::INTER_LINEAR);
+  		padding = resize_img_height - resize_img_width;
+  		cv::copyMakeBorder(img, img, 0, 0, 0, padding, cv::BorderTypes::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+  	}
+
+  	cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
 
   	// You may not need resize when src resulotion equals to dst resulotion
   	inputs[0].buf = (void*)img.data;
@@ -276,8 +283,8 @@ int main(int argc, char** argv)
   	printf("once run use %f ms\n", (__get_us(stop_time) - __get_us(start_time)) / 1000);
 
   	// post process
-  	float scale_w = (float)width / img_width;
-  	float scale_h = (float)height / img_height;
+  	float scale_w = (float)retinaface_img_width / img_width;
+  	float scale_h = (float)retinaface_img_height / img_height;
 
   	detect_result_group_t detect_result_group;
   	std::vector<float>    out_scales;
@@ -286,7 +293,7 @@ int main(int argc, char** argv)
 		out_scales.push_back(output_attrs[i].scale);
 		out_zps.push_back(output_attrs[i].zp);
   	}
-  	post_process((int8_t*)outputs[0].buf, (float*)outputs[1].buf, (int8_t*)outputs[2].buf, height, width,
+  	post_process((int8_t*)outputs[0].buf, (float*)outputs[1].buf, (int8_t*)outputs[2].buf, retinaface_img_height, retinaface_img_width,
 			box_conf_threshold, nms_threshold, scale_w, scale_h, out_zps, out_scales, &detect_result_group);
 
   	// Draw Objects

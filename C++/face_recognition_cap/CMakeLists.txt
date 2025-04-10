@@ -48,6 +48,7 @@ add_executable(${TARGET_NAME}
         src/retinaface.cc
         src/facenet.cc
         src/postprocess.cc
+        src/camera_util.cc
 )
 
 target_link_libraries(${TARGET_NAME}

@@ -46,6 +46,7 @@ include_directories( ${CMAKE_SOURCE_DIR}/include)
 add_executable(${TARGET_NAME}
         src/main.cc
 		src/ssd.cc
+		src/camera_util.cc
 )
 
 target_link_libraries(${TARGET_NAME}
